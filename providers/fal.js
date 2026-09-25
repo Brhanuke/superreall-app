@@ -47,7 +47,9 @@ async function submitAndWait({ model, apiKey, input }) {
   // 1. Submit → get request_id + status/response URLs.
   const submitted = await falFetch(`${QUEUE_BASE}/${model}`, apiKey, {
     method: 'POST',
-    body: JSON.stringify({ input }),
+    // NOTE: this endpoint takes the input fields directly in the body
+    // ({"prompt": ..., "aspect_ratio": ...}), NOT wrapped in {"input": ...}.
+    body: JSON.stringify(input),
   });
   const { request_id: requestId, status_url: statusUrl, response_url: responseUrl } = submitted;
   if (!requestId || !statusUrl) throw new Error('fal.ai did not return a request_id');
