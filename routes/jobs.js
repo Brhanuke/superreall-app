@@ -10,7 +10,7 @@ const multer = require('multer');
 const FORMATS = ['9:16', '1:1', '16:9'];
 const IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
-function jobsRoutes(db, { mediaDir, uploadsDir }) {
+function jobsRoutes(db, { mediaDir, uploadsDir, r2 }) {
   const router = express.Router();
 
   const upload = multer({
@@ -50,12 +50,24 @@ function jobsRoutes(db, { mediaDir, uploadsDir }) {
 
     const refImagePath = req.file ? path.basename(req.file.path) : null;
     const refImageMime = req.file ? req.file.mimetype : null;
+    let refImageR2Key = null;
 
     const { lastInsertRowid } = await db.run(
       `INSERT INTO jobs (user_id, prompt, format, ref_image_path, ref_image_mime)
        VALUES (?, ?, ?, ?, ?) RETURNING id`,
       [req.session.userId, prompt, format, refImagePath, refImageMime]
     );
+
+    // Permanent storage for the reference image (local disk is ephemeral).
+    if (req.file && r2) {
+      refImageR2Key = `refimages/user-${req.session.userId}/job-${lastInsertRowid}-${path.basename(req.file.path)}`;
+      await r2.put(refImageR2Key, fs.readFileSync(req.file.path), req.file.mimetype);
+      fs.rm(req.file.path, { force: true }, () => {});
+      await db.run('UPDATE jobs SET ref_image_path = NULL, ref_image_r2_key = ? WHERE id = ?', [
+        refImageR2Key,
+        lastInsertRowid,
+      ]);
+    }
 
     res.status(201).json(publicJob(await getOwnJob(req.session.userId, lastInsertRowid)));
   });
@@ -100,6 +112,11 @@ function jobsRoutes(db, { mediaDir, uploadsDir }) {
       const abs = path.join(dir, path.basename(name)); // basename: no path traversal
       fs.rm(abs, { force: true }, () => {});
     }
+    if (r2) {
+      // Best-effort: never fail the delete because R2 is unreachable.
+      await r2.del(job.video_r2_key).catch((e) => console.error('[r2] delete failed:', e.message));
+      await r2.del(job.ref_image_r2_key).catch((e) => console.error('[r2] delete failed:', e.message));
+    }
     await db.run('DELETE FROM jobs WHERE id = ?', [job.id]);
     res.status(204).end();
   });
@@ -108,7 +125,8 @@ function jobsRoutes(db, { mediaDir, uploadsDir }) {
 }
 
 // Serve a finished video file — only to its owner.
-function mediaRoutes(db, { mediaDir, uploadsDir }) {
+// Prefers permanent R2 storage (presigned URL redirect); falls back to local disk.
+function mediaRoutes(db, { mediaDir, uploadsDir, r2 }) {
   const router = express.Router();
 
   router.get('/media/:id', async (req, res) => {
@@ -117,7 +135,15 @@ function mediaRoutes(db, { mediaDir, uploadsDir }) {
       req.session.userId,
       'done',
     ]);
-    if (!job || !job.video_filename) return res.status(404).json({ error: 'Video not found' });
+    if (!job) return res.status(404).json({ error: 'Video not found' });
+
+    if (job.video_r2_key && r2) {
+      const url = await r2.getUrl(job.video_r2_key, {
+        downloadName: req.query.download ? `superreall-${job.id}.mp4` : null,
+      });
+      return res.redirect(url);
+    }
+    if (!job.video_filename) return res.status(404).json({ error: 'Video not found' });
 
     const abs = path.join(mediaDir, path.basename(job.video_filename));
     if (!fs.existsSync(abs)) return res.status(404).json({ error: 'Video file missing' });
@@ -130,7 +156,12 @@ function mediaRoutes(db, { mediaDir, uploadsDir }) {
       req.params.id,
       req.session.userId,
     ]);
-    if (!job || !job.ref_image_path) return res.status(404).json({ error: 'Image not found' });
+    if (!job) return res.status(404).json({ error: 'Image not found' });
+
+    if (job.ref_image_r2_key && r2) {
+      return res.redirect(await r2.getUrl(job.ref_image_r2_key));
+    }
+    if (!job.ref_image_path) return res.status(404).json({ error: 'Image not found' });
 
     const abs = path.join(uploadsDir, path.basename(job.ref_image_path));
     if (!fs.existsSync(abs)) return res.status(404).json({ error: 'Image file missing' });
