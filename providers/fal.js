@@ -13,8 +13,8 @@ const fs = require('fs');
 const path = require('path');
 
 const QUEUE_BASE = 'https://queue.fal.run';
-const POLL_INTERVAL_MS = 3000;
-const MAX_WAIT_MS = 10 * 60 * 1000; // 10 minutes per job
+const POLL_INTERVAL_MS = 5000;
+const MAX_WAIT_MS = 30 * 60 * 1000; // 30 minutes per job (large models queue a while)
 
 const ASPECT_RATIOS = { '9:16': '9:16', '1:1': '1:1', '16:9': '16:9' };
 
@@ -42,7 +42,7 @@ async function falFetch(url, apiKey, options = {}) {
   return body;
 }
 
-async function submitAndWait({ model, apiKey, input }) {
+async function submitRequest({ model, apiKey, input }) {
   console.log(`[fal] submit input: ${JSON.stringify(input)}`);
   // 1. Submit → get request_id + status/response URLs.
   const submitted = await falFetch(`${QUEUE_BASE}/${model}`, apiKey, {
@@ -53,8 +53,14 @@ async function submitAndWait({ model, apiKey, input }) {
   });
   const { request_id: requestId, status_url: statusUrl, response_url: responseUrl } = submitted;
   if (!requestId || !statusUrl) throw new Error('fal.ai did not return a request_id');
+  return { requestId, statusUrl, responseUrl };
+}
 
-  // 2. Poll until the job completes or fails.
+// 2. Poll until the request completes or fails. On timeout the error carries
+// `falResume` ({ requestId, statusUrl, responseUrl }) so the worker can park
+// those IDs on the job and resume polling the SAME fal.ai request later —
+// retrying never pays for a second generation.
+async function waitForResult({ apiKey, requestId, statusUrl, responseUrl }) {
   const deadline = Date.now() + MAX_WAIT_MS;
   for (;;) {
     const status = await falFetch(statusUrl, apiKey);
@@ -62,7 +68,11 @@ async function submitAndWait({ model, apiKey, input }) {
     if (status.status === 'FAILED') {
       throw new Error(`fal.ai generation failed: ${JSON.stringify(status.error || status)}`);
     }
-    if (Date.now() > deadline) throw new Error('fal.ai generation timed out');
+    if (Date.now() > deadline) {
+      const err = new Error('fal.ai generation timed out (will resume automatically)');
+      err.falResume = { requestId, statusUrl, responseUrl };
+      throw err;
+    }
     await sleep(POLL_INTERVAL_MS);
   }
 
@@ -109,8 +119,23 @@ module.exports = {
       );
     }
 
-    console.log(`[fal] submitting job ${job.id} to model ${model} (${aspectRatio})`);
-    const videoUrl = await submitAndWait({ model, apiKey, input });
+    let videoUrl;
+    if (job.fal_request_id && job.fal_status_url) {
+      // A previous attempt timed out — resume the SAME fal.ai request.
+      console.log(`[fal] resuming fal.ai request ${job.fal_request_id} for job ${job.id}`);
+      videoUrl = await waitForResult({
+        apiKey,
+        requestId: job.fal_request_id,
+        statusUrl: job.fal_status_url,
+        responseUrl: job.fal_response_url,
+      });
+    } else {
+      console.log(`[fal] submitting job ${job.id} to model ${model} (${aspectRatio})`);
+      const submitted = await submitRequest({ model, apiKey, input });
+      // waitForResult attaches err.falResume = submitted on timeout, so the
+      // worker can resume this exact request instead of paying for a new one.
+      videoUrl = await waitForResult({ apiKey, ...submitted });
+    }
 
     const filename = `job-${job.id}-${Date.now()}.mp4`;
     const absPath = path.join(mediaDir, filename);
