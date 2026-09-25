@@ -5,8 +5,9 @@
 // provider, then marks it 'done' (or 'failed' with the error message).
 
 const path = require('path');
+const fs = require('fs');
 
-function startWorker(db, provider, { mediaDir, uploadsDir }) {
+function startWorker(db, provider, { mediaDir, uploadsDir, r2 }) {
   let busy = false;
 
   // Jobs left 'processing' by a previous run (restart/redeploy/timeout-kill)
@@ -30,20 +31,34 @@ function startWorker(db, provider, { mediaDir, uploadsDir }) {
       );
       if (!job) return;
 
-      // Resolve the reference image to an absolute path for the provider.
+      // Resolve the reference image for the provider (truthiness flag only —
+      // fal.ai fetches it over HTTP via /api/refimage/:id).
       job.refImagePath = job.ref_image_path
         ? path.join(uploadsDir, path.basename(job.ref_image_path))
-        : null;
+        : job.ref_image_r2_key
+          ? `r2:${job.ref_image_r2_key}`
+          : null;
 
       console.log(`[worker] job ${job.id} → processing (${job.format})`);
       try {
         const videoPath = await provider.generate(job, { mediaDir });
+        const videoFilename = path.basename(videoPath);
+        let videoR2Key = null;
+        if (r2) {
+          // Permanent storage: upload to R2, then drop the local copy
+          // (Render's disk is wiped on every redeploy).
+          videoR2Key = `videos/user-${job.user_id}/job-${job.id}-${Date.now()}.mp4`;
+          await r2.put(videoR2Key, fs.readFileSync(videoPath), 'video/mp4');
+          fs.rm(videoPath, { force: true }, () => {});
+          console.log(`[worker] job ${job.id} → uploaded to R2 (${videoR2Key})`);
+        }
         await db.run(
-          `UPDATE jobs SET status = 'done', video_filename = ?, error = NULL,
+          `UPDATE jobs SET status = 'done', video_filename = ?, video_r2_key = ?,
+                           error = NULL,
                            fal_request_id = NULL, fal_status_url = NULL,
                            fal_response_url = NULL, updated_at = datetime('now')
            WHERE id = ?`,
-          [path.basename(videoPath), job.id]
+          [videoFilename, videoR2Key, job.id]
         );
         console.log(`[worker] job ${job.id} → done`);
       } catch (err) {
