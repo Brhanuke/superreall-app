@@ -11,7 +11,7 @@
   },
   "description": "Private prompt-to-video web app for content creators (Express + SQLite)",
   "engines": {
-    "node": ">=20"
+    "node": "20.x"
   },
   "license": "MIT",
   "main": "server.js",
