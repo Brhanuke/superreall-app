@@ -20,6 +20,9 @@ const SQLITE_DDL = `
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     email         TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    first_name    TEXT,
+    last_name     TEXT,
+    gender        TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -57,6 +60,9 @@ const PG_DDL = `
     id            SERIAL PRIMARY KEY,
     email         TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    first_name    TEXT,
+    last_name     TEXT,
+    gender        TEXT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
   );
 
@@ -122,6 +128,11 @@ async function initPostgres() {
   pool.on('error', (err) => console.error('[db] postgres pool error:', err.message));
   await pool.query('SELECT 1'); // fail fast if unreachable / bad string
   await pool.query(PG_DDL);
+  // Additive migration for tables created before these columns existed.
+  await pool.query(`ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS first_name TEXT,
+    ADD COLUMN IF NOT EXISTS last_name TEXT,
+    ADD COLUMN IF NOT EXISTS gender TEXT`);
   console.log('[db] using Postgres (DATABASE_URL)');
   return {
     kind: 'pg',
@@ -148,6 +159,11 @@ function initSqlite(dataDir) {
   sdb.pragma('journal_mode = WAL');
   sdb.pragma('foreign_keys = ON');
   sdb.exec(SQLITE_DDL);
+  // Additive migration for DBs created before these columns existed.
+  const userCols = sdb.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  for (const col of ['first_name', 'last_name', 'gender']) {
+    if (!userCols.includes(col)) sdb.exec(`ALTER TABLE users ADD COLUMN ${col} TEXT`);
+  }
   console.log('[db] using local SQLite');
   return {
     kind: 'sqlite',
