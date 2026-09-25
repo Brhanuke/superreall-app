@@ -1,0 +1,22 @@
+# Render Blueprint — deploys the SuperReall prompt-to-video app as one web service.
+# In Render: New → Blueprint → connect this repo. Then set FAL_API_KEY in the
+# dashboard when you're ready for real AI video (PROVIDER=fal).
+services:
+  - type: web
+    name: superreall-app
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: PROVIDER
+        value: mock
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: FAL_API_KEY
+        sync: false

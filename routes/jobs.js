@@ -1,0 +1,140 @@
+'use strict';
+// routes/jobs.js — video job CRUD. Every query is scoped to req.session.userId
+// so users can only ever see and touch their own jobs.
+
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
+
+const FORMATS = ['9:16', '1:1', '16:9'];
+const IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+function jobsRoutes(db, { mediaDir, uploadsDir }) {
+  const router = express.Router();
+
+  const upload = multer({
+    dest: uploadsDir,
+    limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB
+    fileFilter: (_req, file, cb) => {
+      if (IMAGE_MIMES.has(file.mimetype)) cb(null, true);
+      else cb(new Error('Only image files (jpeg, png, webp, gif) are allowed'));
+    },
+  });
+
+  const getOwnJob = (userId, id) =>
+    db.prepare('SELECT * FROM jobs WHERE id = ? AND user_id = ?').get(id, userId);
+
+  const publicJob = (job) => ({
+    id: job.id,
+    prompt: job.prompt,
+    format: job.format,
+    status: job.status,
+    error: job.error,
+    hasVideo: job.status === 'done' && !!job.video_filename,
+    hasRefImage: !!job.ref_image_path,
+    createdAt: job.created_at,
+    updatedAt: job.updated_at,
+  });
+
+  // Submit a new generation job → status 'pending' (the worker picks it up).
+  router.post('/', upload.single('image'), (req, res) => {
+    const prompt = String(req.body.prompt || '').trim();
+    const format = String(req.body.format || '');
+
+    if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
+    if (prompt.length > 2000) return res.status(400).json({ error: 'Prompt is too long (max 2000 chars)' });
+    if (!FORMATS.includes(format)) {
+      return res.status(400).json({ error: `Format must be one of: ${FORMATS.join(', ')}` });
+    }
+
+    const refImagePath = req.file ? path.basename(req.file.path) : null;
+    const refImageMime = req.file ? req.file.mimetype : null;
+
+    const { lastInsertRowid } = db
+      .prepare(
+        `INSERT INTO jobs (user_id, prompt, format, ref_image_path, ref_image_mime)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(req.session.userId, prompt, format, refImagePath, refImageMime);
+
+    res.status(201).json(publicJob(getOwnJob(req.session.userId, lastInsertRowid)));
+  });
+
+  // List own jobs, newest first.
+  router.get('/', (req, res) => {
+    const jobs = db
+      .prepare('SELECT * FROM jobs WHERE user_id = ? ORDER BY created_at DESC')
+      .all(req.session.userId);
+    res.json(jobs.map(publicJob));
+  });
+
+  // Single job.
+  router.get('/:id', (req, res) => {
+    const job = getOwnJob(req.session.userId, req.params.id);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    res.json(publicJob(job));
+  });
+
+  // Retry a failed job → back to 'pending'.
+  router.post('/:id/retry', (req, res) => {
+    const job = getOwnJob(req.session.userId, req.params.id);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (job.status !== 'failed') {
+      return res.status(400).json({ error: 'Only failed jobs can be retried' });
+    }
+    db.prepare(
+      `UPDATE jobs SET status = 'pending', error = NULL, updated_at = datetime('now')
+       WHERE id = ?`
+    ).run(job.id);
+    res.json(publicJob(getOwnJob(req.session.userId, job.id)));
+  });
+
+  // Delete a job and its files.
+  router.delete('/:id', (req, res) => {
+    const job = getOwnJob(req.session.userId, req.params.id);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    for (const [dir, name] of [[mediaDir, job.video_filename], [uploadsDir, job.ref_image_path]]) {
+      if (!name) continue;
+      const abs = path.join(dir, path.basename(name)); // basename: no path traversal
+      fs.rm(abs, { force: true }, () => {});
+    }
+    db.prepare('DELETE FROM jobs WHERE id = ?').run(job.id);
+    res.status(204).end();
+  });
+
+  return router;
+}
+
+// Serve a finished video file — only to its owner.
+function mediaRoutes(db, { mediaDir, uploadsDir }) {
+  const router = express.Router();
+
+  router.get('/media/:id', (req, res) => {
+    const job = db
+      .prepare('SELECT * FROM jobs WHERE id = ? AND user_id = ? AND status = ?')
+      .get(req.params.id, req.session.userId, 'done');
+    if (!job || !job.video_filename) return res.status(404).json({ error: 'Video not found' });
+
+    const abs = path.join(mediaDir, path.basename(job.video_filename));
+    if (!fs.existsSync(abs)) return res.status(404).json({ error: 'Video file missing' });
+    res.sendFile(abs, { headers: { 'Content-Type': 'video/mp4' } });
+  });
+
+  // Serve the reference image back (used by the fal.ai image-to-video path).
+  router.get('/refimage/:id', (req, res) => {
+    const job = db
+      .prepare('SELECT * FROM jobs WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.session.userId);
+    if (!job || !job.ref_image_path) return res.status(404).json({ error: 'Image not found' });
+
+    const abs = path.join(uploadsDir, path.basename(job.ref_image_path));
+    if (!fs.existsSync(abs)) return res.status(404).json({ error: 'Image file missing' });
+    res.sendFile(abs, { headers: { 'Content-Type': job.ref_image_mime || 'image/jpeg' } });
+  });
+
+  return router;
+}
+
+module.exports = { jobsRoutes, mediaRoutes, FORMATS };

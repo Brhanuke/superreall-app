@@ -1,0 +1,140 @@
+/* Prompt to Video — dark creator-tool theme, no frameworks. */
+:root {
+  --bg: #0b0d12;
+  --panel: #141824;
+  --panel-2: #1a2030;
+  --border: #2a3248;
+  --text: #eef1f8;
+  --muted: #9aa3bd;
+  --accent: #7c6cff;
+  --accent-2: #00d4ff;
+  --danger: #ff5d6c;
+  --ok: #3ddc84;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+.bg-glow {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(600px 300px at 15% -5%, rgba(124,108,255,.25), transparent 60%),
+    radial-gradient(600px 300px at 85% 0%, rgba(0,212,255,.18), transparent 60%);
+}
+.view { position: relative; z-index: 1; }
+.hidden { display: none !important; }
+
+/* ---------- auth ---------- */
+#auth-view { display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 24px; }
+.auth-card {
+  width: 100%; max-width: 400px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 16px; padding: 32px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.logo { font-size: 40px; }
+.auth-card h1 { margin: 8px 0 4px; font-size: 26px; }
+.subtitle { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+.tab {
+  flex: 1; padding: 10px; background: transparent; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 14px;
+}
+.tab.active { background: var(--panel-2); color: var(--text); border-color: var(--accent); }
+
+/* ---------- app layout ---------- */
+#app-view { max-width: 900px; margin: 0 auto; padding: 20px 16px 64px; }
+.topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 4px 20px;
+}
+.brand { font-size: 20px; font-weight: 700; }
+.userbox { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 14px; }
+.panel {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 16px; padding: 24px; margin-bottom: 20px;
+}
+.panel h2 { margin: 0 0 16px; font-size: 18px; }
+.count { color: var(--muted); font-weight: 400; font-size: 14px; }
+
+/* ---------- forms ---------- */
+label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 14px; }
+.optional { color: var(--muted); font-weight: 400; }
+input[type="email"], input[type="password"], textarea, input[type="file"] {
+  width: 100%; margin-top: 6px; padding: 12px; font-size: 15px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-family: inherit;
+}
+textarea { resize: vertical; }
+input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+input[type="file"] { cursor: pointer; }
+
+.btn {
+  display: inline-block; padding: 12px 22px; font-size: 15px; font-weight: 600;
+  border-radius: 10px; border: 1px solid var(--border); cursor: pointer;
+  background: var(--panel-2); color: var(--text); transition: transform .05s;
+}
+.btn:active { transform: scale(.98); }
+.btn.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border: none; color: #fff; width: 100%;
+}
+.btn.ghost { padding: 8px 14px; font-size: 13px; }
+.btn.danger { background: transparent; color: var(--danger); border-color: var(--danger); padding: 8px 14px; font-size: 13px; }
+.btn.small { padding: 8px 14px; font-size: 13px; }
+.error { color: var(--danger); font-size: 14px; }
+
+/* ---------- format picker ---------- */
+.format-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
+.format-card {
+  margin: 0; padding: 14px 10px; text-align: center; cursor: pointer;
+  background: var(--panel-2); border: 2px solid var(--border); border-radius: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.format-card input { display: none; }
+.format-card:has(input:checked) { border-color: var(--accent); background: rgba(124,108,255,.12); }
+.format-glyph { display: block; border: 2px solid var(--muted); border-radius: 3px; }
+.format-glyph.tall { width: 22px; height: 40px; }
+.format-glyph.square { width: 32px; height: 32px; }
+.format-glyph.wide { width: 44px; height: 25px; }
+.format-name { font-size: 13px; }
+.format-use { font-size: 11px; color: var(--muted); font-weight: 400; }
+
+/* ---------- jobs ---------- */
+.job-list { display: flex; flex-direction: column; gap: 14px; }
+.empty { color: var(--muted); font-size: 14px; margin: 0; }
+.job {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px;
+}
+.job-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.job-prompt { font-size: 14px; }
+.badge {
+  font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+  white-space: nowrap;
+}
+.status { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+.status.pending { background: rgba(255,193,7,.15); color: #ffc107; }
+.status.processing { background: rgba(0,212,255,.15); color: var(--accent-2); }
+.status.done { background: rgba(61,220,132,.15); color: var(--ok); }
+.status.failed { background: rgba(255,93,108,.15); color: var(--danger); }
+.spinner {
+  display: inline-block; width: 12px; height: 12px; margin-right: 6px;
+  border: 2px solid rgba(0,212,255,.3); border-top-color: var(--accent-2);
+  border-radius: 50%; animation: spin 1s linear infinite; vertical-align: -1px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.job-meta { color: var(--muted); font-size: 12px; margin: 6px 0; }
+.job-error { color: var(--danger); font-size: 13px; margin: 6px 0; }
+.job-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.job video { width: 100%; max-height: 420px; border-radius: 10px; background: #000; margin-top: 8px; }
+
+@media (max-width: 560px) {
+  .format-row { grid-template-columns: 1fr; }
+  .panel { padding: 18px; }
+}

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prompt to Video</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-glow"></div>
+
+  <!-- ============ AUTH VIEW ============ -->
+  <main id="auth-view" class="view hidden">
+    <div class="auth-card">
+      <div class="logo">🎬</div>
+      <h1>Prompt to Video</h1>
+      <p class="subtitle">Turn a text prompt into AI video for your content.</p>
+
+      <div class="tabs">
+        <button id="tab-login" class="tab active" type="button">Sign in</button>
+        <button id="tab-signup" class="tab" type="button">Create account</button>
+      </div>
+
+      <form id="auth-form">
+        <label>Email
+          <input id="auth-email" type="email" required autocomplete="email" placeholder="you@example.com" />
+        </label>
+        <label>Password
+          <input id="auth-password" type="password" required minlength="8" autocomplete="current-password" placeholder="Minimum 8 characters" />
+        </label>
+        <p id="auth-error" class="error hidden"></p>
+        <button id="auth-submit" class="btn primary" type="submit">Sign in</button>
+      </form>
+    </div>
+  </main>
+
+  <!-- ============ APP VIEW ============ -->
+  <main id="app-view" class="view hidden">
+    <header class="topbar">
+      <div class="brand">🎬 Prompt to Video</div>
+      <div class="userbox">
+        <span id="user-email"></span>
+        <button id="logout-btn" class="btn ghost" type="button">Log out</button>
+      </div>
+    </header>
+
+    <section class="panel create-panel">
+      <h2>Create a video</h2>
+      <form id="prompt-form">
+        <label>Prompt
+          <textarea id="prompt-input" rows="3" maxlength="2000" required
+            placeholder="A drone gliding over ocean waves at golden sunset, cinematic light…"></textarea>
+        </label>
+
+        <div class="format-row" role="radiogroup" aria-label="Video format">
+          <label class="format-card">
+            <input type="radio" name="format" value="9:16" checked />
+            <span class="format-glyph tall"></span>
+            <span class="format-name">Vertical 9:16</span>
+            <span class="format-use">Shorts · Reels · TikTok</span>
+          </label>
+          <label class="format-card">
+            <input type="radio" name="format" value="1:1" />
+            <span class="format-glyph square"></span>
+            <span class="format-name">Square 1:1</span>
+            <span class="format-use">Feed posts</span>
+          </label>
+          <label class="format-card">
+            <input type="radio" name="format" value="16:9" />
+            <span class="format-glyph wide"></span>
+            <span class="format-name">Landscape 16:9</span>
+            <span class="format-use">YouTube</span>
+          </label>
+        </div>
+
+        <label class="file-label">Reference image <span class="optional">(optional — image-to-video)</span>
+          <input id="image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" />
+        </label>
+
+        <p id="prompt-error" class="error hidden"></p>
+        <button class="btn primary" type="submit">✨ Generate video</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>Queue <span id="queue-count" class="count"></span></h2>
+      <div id="queue-list" class="job-list"><p class="empty">Nothing in the queue.</p></div>
+    </section>
+
+    <section class="panel">
+      <h2>Gallery <span id="gallery-count" class="count"></span></h2>
+      <div id="gallery-list" class="job-list"><p class="empty">Your finished videos will appear here.</p></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
