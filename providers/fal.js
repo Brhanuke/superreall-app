@@ -33,13 +33,17 @@ async function falFetch(url, apiKey, options = {}) {
   let body = null;
   try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
   if (!res.ok) {
-    const detail = (body && (body.detail || body.message)) || text;
+    const raw = (body && (body.detail || body.message)) || text || `HTTP ${res.status}`;
+    // fal.ai validation errors come back as objects/arrays — stringify them
+    // so the real reason shows up in the UI instead of "[object Object]".
+    const detail = typeof raw === 'string' ? raw : JSON.stringify(raw);
     throw new Error(`fal.ai request failed (${res.status}): ${detail}`);
   }
   return body;
 }
 
 async function submitAndWait({ model, apiKey, input }) {
+  console.log(`[fal] submit input: ${JSON.stringify(input)}`);
   // 1. Submit → get request_id + status/response URLs.
   const submitted = await falFetch(`${QUEUE_BASE}/${model}`, apiKey, {
     method: 'POST',
