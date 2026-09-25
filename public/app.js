@@ -118,7 +118,15 @@ $('#prompt-form').addEventListener('submit', async (e) => {
 /* ---------- jobs: queue + gallery ---------- */
 const fmtBadge = { '9:16': '📱 9:16', '1:1': '⬛ 1:1', '16:9': '🖥️ 16:9' };
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const when = (iso) => new Date(iso + 'Z').toLocaleString();
+const when = (v) => {
+  // createdAt arrives as a JSON string: "2026-09-25 17:10:35" (SQLite) or
+  // "2026-09-25T21:10:35.123Z" (Postgres) — normalize both before parsing.
+  if (!v) return '';
+  let s = String(v).trim();
+  if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) s = s.replace(' ', 'T') + 'Z';
+  const d = new Date(s);
+  return isNaN(d) ? '' : d.toLocaleString();
+};
 
 function jobCard(job) {
   const active = job.status === 'pending' || job.status === 'processing';
@@ -137,9 +145,10 @@ function jobCard(job) {
 
   if (job.status === 'done') {
     body += `
-      <video controls preload="metadata" src="/api/media/${job.id}"></video>
+      <video controls preload="metadata" src="/api/media/${job.id}"
+        onerror="this.outerHTML='<div class=&quot;job-error&quot;>⚠ The video file was lost when the server restarted (temporary storage). Delete this entry and generate again.</div>'"></video>
       <div class="job-actions">
-        <a class="btn small" href="/api/media/${job.id}" download="video-${job.id}.mp4">⬇ Download</a>
+        <a class="btn small" href="/api/media/${job.id}?download=1" download="video-${job.id}.mp4">⬇ Download</a>
         <button class="btn danger" data-del="${job.id}" type="button">Delete</button>
       </div>`;
   } else if (job.status === 'failed') {
