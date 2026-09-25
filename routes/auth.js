@@ -10,7 +10,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function authRoutes(db) {
   const router = express.Router();
 
-  const findByEmail = db.prepare('SELECT * FROM users WHERE email = ?');
+  const findByEmail = (email) => db.get('SELECT * FROM users WHERE email = ?', [email]);
 
   router.post('/signup', async (req, res) => {
     const email = String(req.body.email || '').trim().toLowerCase();
@@ -18,12 +18,13 @@ function authRoutes(db) {
 
     if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Invalid email address' });
     if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    if (findByEmail.get(email)) return res.status(409).json({ error: 'Email already registered' });
+    if (await findByEmail(email)) return res.status(409).json({ error: 'Email already registered' });
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const { lastInsertRowid } = db
-      .prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)')
-      .run(email, passwordHash);
+    const { lastInsertRowid } = await db.run(
+      'INSERT INTO users (email, password_hash) VALUES (?, ?) RETURNING id',
+      [email, passwordHash]
+    );
 
     req.session.regenerate((err) => {
       if (err) return res.status(500).json({ error: 'Session error' });
@@ -36,7 +37,7 @@ function authRoutes(db) {
     const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '');
 
-    const user = findByEmail.get(email);
+    const user = await findByEmail(email);
     const ok = user && (await bcrypt.compare(password, user.password_hash));
     if (!ok) return res.status(401).json({ error: 'Invalid email or password' });
 
@@ -54,9 +55,11 @@ function authRoutes(db) {
     });
   });
 
-  router.get('/me', (req, res) => {
+  router.get('/me', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not signed in' });
-    const user = db.prepare('SELECT id, email, created_at FROM users WHERE id = ?').get(req.session.userId);
+    const user = await db.get('SELECT id, email, created_at FROM users WHERE id = ?', [
+      req.session.userId,
+    ]);
     if (!user) return res.status(401).json({ error: 'Not signed in' });
     res.json(user);
   });

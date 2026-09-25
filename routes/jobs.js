@@ -23,7 +23,7 @@ function jobsRoutes(db, { mediaDir, uploadsDir }) {
   });
 
   const getOwnJob = (userId, id) =>
-    db.prepare('SELECT * FROM jobs WHERE id = ? AND user_id = ?').get(id, userId);
+    db.get('SELECT * FROM jobs WHERE id = ? AND user_id = ?', [id, userId]);
 
   const publicJob = (job) => ({
     id: job.id,
@@ -38,7 +38,7 @@ function jobsRoutes(db, { mediaDir, uploadsDir }) {
   });
 
   // Submit a new generation job → status 'pending' (the worker picks it up).
-  router.post('/', upload.single('image'), (req, res) => {
+  router.post('/', upload.single('image'), async (req, res) => {
     const prompt = String(req.body.prompt || '').trim();
     const format = String(req.body.format || '');
 
@@ -51,48 +51,48 @@ function jobsRoutes(db, { mediaDir, uploadsDir }) {
     const refImagePath = req.file ? path.basename(req.file.path) : null;
     const refImageMime = req.file ? req.file.mimetype : null;
 
-    const { lastInsertRowid } = db
-      .prepare(
-        `INSERT INTO jobs (user_id, prompt, format, ref_image_path, ref_image_mime)
-         VALUES (?, ?, ?, ?, ?)`
-      )
-      .run(req.session.userId, prompt, format, refImagePath, refImageMime);
+    const { lastInsertRowid } = await db.run(
+      `INSERT INTO jobs (user_id, prompt, format, ref_image_path, ref_image_mime)
+       VALUES (?, ?, ?, ?, ?) RETURNING id`,
+      [req.session.userId, prompt, format, refImagePath, refImageMime]
+    );
 
-    res.status(201).json(publicJob(getOwnJob(req.session.userId, lastInsertRowid)));
+    res.status(201).json(publicJob(await getOwnJob(req.session.userId, lastInsertRowid)));
   });
 
   // List own jobs, newest first.
-  router.get('/', (req, res) => {
-    const jobs = db
-      .prepare('SELECT * FROM jobs WHERE user_id = ? ORDER BY created_at DESC')
-      .all(req.session.userId);
+  router.get('/', async (req, res) => {
+    const jobs = await db.all('SELECT * FROM jobs WHERE user_id = ? ORDER BY created_at DESC', [
+      req.session.userId,
+    ]);
     res.json(jobs.map(publicJob));
   });
 
   // Single job.
-  router.get('/:id', (req, res) => {
-    const job = getOwnJob(req.session.userId, req.params.id);
+  router.get('/:id', async (req, res) => {
+    const job = await getOwnJob(req.session.userId, req.params.id);
     if (!job) return res.status(404).json({ error: 'Job not found' });
     res.json(publicJob(job));
   });
 
   // Retry a failed job → back to 'pending'.
-  router.post('/:id/retry', (req, res) => {
-    const job = getOwnJob(req.session.userId, req.params.id);
+  router.post('/:id/retry', async (req, res) => {
+    const job = await getOwnJob(req.session.userId, req.params.id);
     if (!job) return res.status(404).json({ error: 'Job not found' });
     if (job.status !== 'failed') {
       return res.status(400).json({ error: 'Only failed jobs can be retried' });
     }
-    db.prepare(
+    await db.run(
       `UPDATE jobs SET status = 'pending', error = NULL, updated_at = datetime('now')
-       WHERE id = ?`
-    ).run(job.id);
-    res.json(publicJob(getOwnJob(req.session.userId, job.id)));
+       WHERE id = ?`,
+      [job.id]
+    );
+    res.json(publicJob(await getOwnJob(req.session.userId, job.id)));
   });
 
   // Delete a job and its files.
-  router.delete('/:id', (req, res) => {
-    const job = getOwnJob(req.session.userId, req.params.id);
+  router.delete('/:id', async (req, res) => {
+    const job = await getOwnJob(req.session.userId, req.params.id);
     if (!job) return res.status(404).json({ error: 'Job not found' });
 
     for (const [dir, name] of [[mediaDir, job.video_filename], [uploadsDir, job.ref_image_path]]) {
@@ -100,7 +100,7 @@ function jobsRoutes(db, { mediaDir, uploadsDir }) {
       const abs = path.join(dir, path.basename(name)); // basename: no path traversal
       fs.rm(abs, { force: true }, () => {});
     }
-    db.prepare('DELETE FROM jobs WHERE id = ?').run(job.id);
+    await db.run('DELETE FROM jobs WHERE id = ?', [job.id]);
     res.status(204).end();
   });
 
@@ -111,10 +111,12 @@ function jobsRoutes(db, { mediaDir, uploadsDir }) {
 function mediaRoutes(db, { mediaDir, uploadsDir }) {
   const router = express.Router();
 
-  router.get('/media/:id', (req, res) => {
-    const job = db
-      .prepare('SELECT * FROM jobs WHERE id = ? AND user_id = ? AND status = ?')
-      .get(req.params.id, req.session.userId, 'done');
+  router.get('/media/:id', async (req, res) => {
+    const job = await db.get('SELECT * FROM jobs WHERE id = ? AND user_id = ? AND status = ?', [
+      req.params.id,
+      req.session.userId,
+      'done',
+    ]);
     if (!job || !job.video_filename) return res.status(404).json({ error: 'Video not found' });
 
     const abs = path.join(mediaDir, path.basename(job.video_filename));
@@ -123,10 +125,11 @@ function mediaRoutes(db, { mediaDir, uploadsDir }) {
   });
 
   // Serve the reference image back (used by the fal.ai image-to-video path).
-  router.get('/refimage/:id', (req, res) => {
-    const job = db
-      .prepare('SELECT * FROM jobs WHERE id = ? AND user_id = ?')
-      .get(req.params.id, req.session.userId);
+  router.get('/refimage/:id', async (req, res) => {
+    const job = await db.get('SELECT * FROM jobs WHERE id = ? AND user_id = ?', [
+      req.params.id,
+      req.session.userId,
+    ]);
     if (!job || !job.ref_image_path) return res.status(404).json({ error: 'Image not found' });
 
     const abs = path.join(uploadsDir, path.basename(job.ref_image_path));
