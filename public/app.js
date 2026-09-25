@@ -27,19 +27,35 @@ function setAuthMode(mode) {
   $('#tab-signup').classList.toggle('active', mode === 'signup');
   $('#auth-submit').textContent = mode === 'login' ? 'Sign in' : 'Create account';
   $('#auth-error').classList.add('hidden');
+  // Extra profile fields only exist on the signup tab.
+  $('#signup-fields').classList.toggle('hidden', mode !== 'signup');
+  $('#auth-firstname').required = mode === 'signup';
+  // Use the right autocomplete hint for the password field per tab.
+  $('#auth-password').setAttribute('autocomplete', mode === 'signup' ? 'new-password' : 'current-password');
 }
 $('#tab-login').onclick = () => setAuthMode('login');
 $('#tab-signup').onclick = () => setAuthMode('signup');
+
+// Password visibility toggle (the "eye" button).
+$('#toggle-password').onclick = () => {
+  const input = $('#auth-password');
+  const btn = $('#toggle-password');
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  btn.textContent = show ? '🙈' : '👁';
+  btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  btn.setAttribute('title', show ? 'Hide password' : 'Show password');
+};
 
 function showAuth() {
   authView.classList.remove('hidden');
   appView.classList.add('hidden');
   stopPolling();
 }
-function showApp(email) {
+function showApp(user) {
   authView.classList.add('hidden');
   appView.classList.remove('hidden');
-  $('#user-email').textContent = email;
+  $('#user-email').textContent = user.first_name ? `Hi, ${user.first_name}` : user.email;
   refreshJobs();
   startPolling();
 }
@@ -49,16 +65,22 @@ $('#auth-form').addEventListener('submit', async (e) => {
   const err = $('#auth-error');
   err.classList.add('hidden');
   try {
+    const body = {
+      email: $('#auth-email').value,
+      password: $('#auth-password').value,
+    };
+    if (authMode === 'signup') {
+      body.firstName = $('#auth-firstname').value.trim();
+      body.lastName = $('#auth-lastname').value.trim();
+      body.gender = $('#auth-gender').value;
+    }
     const user = await api(authMode === 'login' ? '/api/login' : '/api/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: $('#auth-email').value,
-        password: $('#auth-password').value,
-      }),
+      body: JSON.stringify(body),
     });
     $('#auth-password').value = '';
-    showApp(user.email);
+    showApp(user);
   } catch (ex) {
     err.textContent = ex.message;
     err.classList.remove('hidden');
@@ -185,7 +207,7 @@ function stopPolling() {
 (async () => {
   try {
     const me = await api('/api/me');
-    showApp(me.email);
+    showApp(me);
   } catch {
     showAuth();
   }

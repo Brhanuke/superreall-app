@@ -22,11 +22,33 @@
       </div>
 
       <form id="auth-form">
+        <div id="signup-fields" class="hidden">
+          <div class="name-row">
+            <label>First name
+              <input id="auth-firstname" type="text" autocomplete="given-name" placeholder="Jane" maxlength="50" />
+            </label>
+            <label>Last name
+              <input id="auth-lastname" type="text" autocomplete="family-name" placeholder="Doe" maxlength="50" />
+            </label>
+          </div>
+          <label>Gender
+            <select id="auth-gender" autocomplete="sex">
+              <option value="">Select…</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+              <option value="nonbinary">Non-binary</option>
+              <option value="prefer-not-to-say">Prefer not to say</option>
+            </select>
+          </label>
+        </div>
         <label>Email
           <input id="auth-email" type="email" required autocomplete="email" placeholder="you@example.com" />
         </label>
         <label>Password
-          <input id="auth-password" type="password" required minlength="8" autocomplete="current-password" placeholder="Minimum 8 characters" />
+          <span class="password-wrap">
+            <input id="auth-password" type="password" required minlength="8" autocomplete="current-password" placeholder="Minimum 8 characters" />
+            <button id="toggle-password" class="eye-btn" type="button" aria-label="Show password" title="Show password">👁</button>
+          </span>
         </label>
         <p id="auth-error" class="error hidden"></p>
         <button id="auth-submit" class="btn primary" type="submit">Sign in</button>
