@@ -19,6 +19,7 @@ const { authRoutes, requireAuth } = require('./routes/auth');
 const { jobsRoutes, mediaRoutes } = require('./routes/jobs');
 const { startWorker } = require('./worker');
 const { loadProvider } = require('./providers');
+const { createR2 } = require('./storage/r2');
 
 // ---- config ---------------------------------------------------------------
 const PORT = Number(process.env.PORT || 3000);
@@ -66,9 +67,12 @@ async function main() {
   app.use('/api/signup', authLimiter);
   app.use('/api/login', authLimiter);
 
+  // Permanent media storage (Cloudflare R2) — null when not configured.
+  const r2 = createR2();
+
   app.use('/api', authRoutes(db));                       // signup/login/logout/me (public)
-  app.use('/api/jobs', requireAuth, jobsRoutes(db, { mediaDir: MEDIA_DIR, uploadsDir: UPLOADS_DIR }));
-  app.use('/api', requireAuth, mediaRoutes(db, { mediaDir: MEDIA_DIR, uploadsDir: UPLOADS_DIR }));
+  app.use('/api/jobs', requireAuth, jobsRoutes(db, { mediaDir: MEDIA_DIR, uploadsDir: UPLOADS_DIR, r2 }));
+  app.use('/api', requireAuth, mediaRoutes(db, { mediaDir: MEDIA_DIR, uploadsDir: UPLOADS_DIR, r2 }));
 
   // Frontend (no build step — plain HTML/CSS/JS).
   app.use(express.static(path.join(__dirname, 'public')));
@@ -81,7 +85,7 @@ async function main() {
   });
 
   // ---- worker + boot ------------------------------------------------------
-  const worker = startWorker(db, provider, { mediaDir: MEDIA_DIR, uploadsDir: UPLOADS_DIR });
+  const worker = startWorker(db, provider, { mediaDir: MEDIA_DIR, uploadsDir: UPLOADS_DIR, r2 });
 
   const server = app.listen(PORT, () => {
     console.log(`[init] Prompt to Video listening on http://localhost:${PORT}`);
