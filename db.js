@@ -33,10 +33,12 @@ const SQLITE_DDL = `
     format          TEXT NOT NULL CHECK (format IN ('9:16', '1:1', '16:9')),
     ref_image_path  TEXT,
     ref_image_mime  TEXT,
+    ref_image_r2_key TEXT,
     status          TEXT NOT NULL DEFAULT 'pending'
                     CHECK (status IN ('pending', 'processing', 'done', 'failed')),
     error           TEXT,
     video_filename  TEXT,
+    video_r2_key    TEXT,
     fal_request_id  TEXT,                       -- resume polling this fal.ai request after a timeout
     fal_status_url  TEXT,
     fal_response_url TEXT,
@@ -73,10 +75,12 @@ const PG_DDL = `
     format          TEXT NOT NULL CHECK (format IN ('9:16', '1:1', '16:9')),
     ref_image_path  TEXT,
     ref_image_mime  TEXT,
+    ref_image_r2_key TEXT,
     status          TEXT NOT NULL DEFAULT 'pending'
                     CHECK (status IN ('pending', 'processing', 'done', 'failed')),
     error           TEXT,
     video_filename  TEXT,
+    video_r2_key    TEXT,
     fal_request_id  TEXT,
     fal_status_url  TEXT,
     fal_response_url TEXT,
@@ -133,6 +137,9 @@ async function initPostgres() {
     ADD COLUMN IF NOT EXISTS first_name TEXT,
     ADD COLUMN IF NOT EXISTS last_name TEXT,
     ADD COLUMN IF NOT EXISTS gender TEXT`);
+  await pool.query(`ALTER TABLE jobs
+    ADD COLUMN IF NOT EXISTS video_r2_key TEXT,
+    ADD COLUMN IF NOT EXISTS ref_image_r2_key TEXT`);
   console.log('[db] using Postgres (DATABASE_URL)');
   return {
     kind: 'pg',
@@ -163,6 +170,10 @@ function initSqlite(dataDir) {
   const userCols = sdb.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
   for (const col of ['first_name', 'last_name', 'gender']) {
     if (!userCols.includes(col)) sdb.exec(`ALTER TABLE users ADD COLUMN ${col} TEXT`);
+  }
+  const jobCols = sdb.prepare('PRAGMA table_info(jobs)').all().map((c) => c.name);
+  for (const col of ['video_r2_key', 'ref_image_r2_key']) {
+    if (!jobCols.includes(col)) sdb.exec(`ALTER TABLE jobs ADD COLUMN ${col} TEXT`);
   }
   console.log('[db] using local SQLite');
   return {
